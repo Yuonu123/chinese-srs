@@ -201,7 +201,7 @@ function saveWords(w){
       progress[k]={interval:v.interval,ease:v.ease,due:v.due,reps:v.reps};
     }
     localStorage.setItem(storageKey(), JSON.stringify(progress));
-  }catch(e){ console.warn('saveWords failed:',e); }
+  }catch(e){ console.error('saveWords FAILED (localStorage quota?):', e); }
 }
 function loadWords(){
   // Start from the baked-in defaults, then overlay any saved progress.
@@ -314,15 +314,16 @@ function renderCard(){
   const cardEl = document.getElementById('q-card');
   const reps = w.reps||0;
 
+  function escRe(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
   if(currentLang==='zh'){
     const blanked=w.example_zh
-      ? w.example_zh.replace(w.chinese,'<span class="card-blank">　　　</span>')
+      ? w.example_zh.replace(new RegExp(escRe(w.chinese),'g'),'<span class="card-blank">　　　</span>')
       : '<span class="card-hint">No sentence yet</span>';
     cardEl.innerHTML='<div class="card-label">Fill in the blank</div><div class="card-sentence">'+blanked+'</div><div class="card-hint">💡 '+esc(w.meaning)+'</div>';
   } else {
     const cefrBadge = w.cefr ? '<div class="card-cefr">CEFR '+esc(w.cefr)+'</div>' : '';
     const blanked=w.example_ms
-      ? w.example_ms.replace(w.malay,'<span class="card-blank card-blank-ms">　　　</span>')
+      ? w.example_ms.replace(new RegExp(escRe(w.malay),'gi'),'<span class="card-blank card-blank-ms">　　　</span>')
       : '<span class="card-hint">No sentence yet</span>';
     cardEl.innerHTML='<div class="card-label">Fill in the blank</div><div class="card-sentence">'+blanked+'</div><div class="card-hint">💡 '+esc(w.meaning)+'</div>'+cefrBadge;
   }

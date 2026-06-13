@@ -257,9 +257,16 @@ function updateLangUI(){
 
 // ── HOME ──────────────────────────────────────────────────────────────────────
 let words = {};
+let wordsLang = null; // tracks which language 'words' is loaded for
 function showHome(){
   updateLangUI();
-  words = loadWords();
+  // Only reload from localStorage on first load or language switch.
+  // After a session, 'words' is already up-to-date in memory — re-reading
+  // from localStorage would show stale data if saveWords() failed silently.
+  if(wordsLang !== currentLang || Object.keys(words).length === 0){
+    words = loadWords();
+    wordsLang = currentLang;
+  }
   const today = todayStr();
   const due = Object.values(words).filter(w=>w.due<=today);
   document.getElementById('stat-due').textContent = due.length;
@@ -272,7 +279,7 @@ function showHome(){
 let sessionQueue=[],sessionIdx=0,sessionStats={again:0,hard:0,good:0,easy:0};
 
 function startSession(){
-  words = loadWords();
+  // words is already loaded by showHome(); no need to reload
   const today = todayStr();
   sessionQueue = Object.values(words).filter(w=>w.due<=today).sort(()=>Math.random()-0.5).slice(0,50);
   if(!sessionQueue.length){ alert('No words due! Come back tomorrow 🎉'); return; }
@@ -373,7 +380,8 @@ function row(l,v,c){return'<div class="summary-row"><span class="summary-label">
 
 // ── IMPORT/EXPORT ─────────────────────────────────────────────────────────────
 function exportData(){
-  const w=loadWords();
+  // Use in-memory words (always up-to-date) instead of re-reading localStorage
+  const w=words;
   const lang = currentLang;
   const blob=new Blob([JSON.stringify({words:w,last_updated:todayStr(),language:lang},null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);

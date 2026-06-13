@@ -192,18 +192,31 @@ let currentLang = localStorage.getItem(LANG_KEY) || 'zh';
 function storageKey(){ return currentLang === 'zh' ? ZH_KEY : MS_KEY; }
 function defaultWords(){ return currentLang === 'zh' ? ZH_WORDS : MS_WORDS; }
 
+function saveWords(w){
+  // Only persist the tiny SRS progress fields — not the full word data.
+  // This keeps localStorage well under quota (~50KB instead of ~1.5MB).
+  try{
+    const progress={};
+    for(const [k,v] of Object.entries(w)){
+      progress[k]={interval:v.interval,ease:v.ease,due:v.due,reps:v.reps};
+    }
+    localStorage.setItem(storageKey(), JSON.stringify(progress));
+  }catch(e){ console.warn('saveWords failed:',e); }
+}
 function loadWords(){
+  // Start from the baked-in defaults, then overlay any saved progress.
+  const base = JSON.parse(JSON.stringify(defaultWords()));
   try{
     const s = localStorage.getItem(storageKey());
-    if(s){ try{ return JSON.parse(s); }catch(e){} }
-    const w = JSON.parse(JSON.stringify(defaultWords()));
-    try{ saveWords(w); }catch(e){}
-    return w;
-  }catch(e){
-    return JSON.parse(JSON.stringify(defaultWords()));
-  }
+    if(s){
+      const progress = JSON.parse(s);
+      for(const [k,p] of Object.entries(progress)){
+        if(base[k]) Object.assign(base[k], p);
+      }
+    }
+  }catch(e){ console.warn('loadWords failed:',e); }
+  return base;
 }
-function saveWords(w){ try{ localStorage.setItem(storageKey(), JSON.stringify(w)); }catch(e){} }
 
 // ── SM-2 ─────────────────────────────────────────────────────────────────────
 const MIN_EASE = 1.3;

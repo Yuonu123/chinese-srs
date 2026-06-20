@@ -295,7 +295,17 @@ let sessionQueue=[],sessionIdx=0,sessionStats={again:0,hard:0,good:0,easy:0};
 function startSession(){
   // words is already loaded by showHome(); no need to reload
   const today = todayStr();
-  sessionQueue = Object.values(words).filter(w=>w.due<=today).sort(()=>Math.random()-0.5).slice(0,50);
+  // Priority: high reps first (protect established words), then most overdue
+  const due = Object.values(words).filter(w=>w.due<=today);
+  due.sort((a,b)=>{
+    const repDiff = (b.reps||0) - (a.reps||0);
+    if(repDiff!==0) return repDiff;
+    return a.due < b.due ? -1 : a.due > b.due ? 1 : 0;
+  });
+  const top = due.slice(0,50);
+  // Shuffle the top 50 for variety within the session
+  top.sort(()=>Math.random()-0.5);
+  sessionQueue = top;
   if(!sessionQueue.length){ alert('No words due! Come back tomorrow 🎉'); return; }
   sessionIdx=0; sessionStats={again:0,hard:0,good:0,easy:0};
   show('screen-quiz'); renderCard();

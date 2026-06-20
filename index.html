@@ -335,14 +335,13 @@ function renderCard(){
   const reps = w.reps||0;
 
   function escRe(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
-  const speakBtn='<button class="speak-btn" onclick="speakCurrent()" title="Listen">🔊</button>';
+  const speakBtn='<button class="speak-btn" onclick="speakCurrent()" title="Listen">🔊</button><button class="speak-btn" onclick="speechSynthesis.cancel()" title="Stop">✕</button>';
   if(currentLang==='zh'){
     const blanked=w.example_zh
       ? w.example_zh.replace(new RegExp(escRe(w.chinese),'g'),'<span class="card-blank">　　　</span>')
       : '<span class="card-hint">No sentence yet</span>';
-    const pinyinHint=w.example_pinyin ? '<div class="card-hint" style="margin-top:6px;color:var(--text2);font-size:13px">'+esc(w.example_pinyin.replace(new RegExp(escRe(w.pinyin),'gi'),'___'))+'</div>' : '';
     const exHint=w.example_en ? '<div class="card-hint" style="margin-top:4px;font-style:italic;color:var(--text3);font-size:13px">'+esc(w.example_en)+'</div>' : '';
-    cardEl.innerHTML='<div class="card-label">Fill in the blank '+speakBtn+'</div><div class="card-sentence">'+blanked+'</div>'+pinyinHint+'<div class="card-hint" style="margin-top:8px">💡 '+esc(w.meaning)+'</div>'+exHint;
+    cardEl.innerHTML='<div class="card-label">Fill in the blank '+speakBtn+'</div><div class="card-sentence">'+blanked+'</div><div class="card-hint" style="margin-top:8px">💡 '+esc(w.meaning)+'</div>'+exHint;
   } else {
     const cefrBadge = w.cefr ? '<div class="card-cefr">CEFR '+esc(w.cefr)+'</div>' : '';
     const blanked=w.example_ms

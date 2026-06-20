@@ -194,16 +194,17 @@ let currentLang = localStorage.getItem(LANG_KEY) || 'zh';
 function storageKey(){ return currentLang === 'zh' ? ZH_KEY : MS_KEY; }
 function defaultWords(){ return currentLang === 'zh' ? ZH_WORDS : MS_WORDS; }
 
-function saveWords(w){
-  // Only persist the tiny SRS progress fields — not the full word data.
-  // This keeps localStorage well under quota (~50KB instead of ~1.5MB).
+const _modifiedKeys = new Set();
+function saveWords(w, keys){
+  // Only write keys that changed this call, merge with what's already saved.
   try{
-    const progress={};
-    for(const [k,v] of Object.entries(w)){
-      progress[k]={interval:v.interval,ease:v.ease,due:v.due,reps:v.reps};
+    const existing = JSON.parse(localStorage.getItem(storageKey())||'{}');
+    const toSave = keys || Object.keys(w);
+    for(const k of toSave){
+      if(w[k]) existing[k]={interval:w[k].interval,ease:w[k].ease,due:w[k].due,reps:w[k].reps};
     }
-    localStorage.setItem(storageKey(), JSON.stringify(progress));
-  }catch(e){ console.error('saveWords FAILED (localStorage quota?):', e); }
+    localStorage.setItem(storageKey(), JSON.stringify(existing));
+  }catch(e){ console.error('saveWords FAILED:', e); }
 }
 function loadWords(){
   // Start from the baked-in defaults, then overlay any saved progress.
@@ -305,6 +306,14 @@ let sessionQueue=[],sessionIdx=0,sessionStats={again:0,hard:0,good:0,easy:0};
 function startSession(){
   // words is already loaded by showHome(); no need to reload
   const today = todayStr();
+  // Restore unrated cards from last session first
+  let unratedKeys = [];
+  try{
+    const u = localStorage.getItem(storageKey()+'_unrated');
+    if(u) unratedKeys = JSON.parse(u);
+    localStorage.removeItem(storageKey()+'_unrated');
+  }catch(e){}
+
   // Priority: high reps first (protect established words), then most overdue
   const due = Object.values(words).filter(w=>w.due<=today);
   due.sort((a,b)=>{
@@ -313,9 +322,17 @@ function startSession(){
     return a.due < b.due ? -1 : a.due > b.due ? 1 : 0;
   });
   const top = due.slice(0,50);
-  // Shuffle the top 50 for variety within the session
   top.sort(()=>Math.random()-0.5);
-  sessionQueue = top;
+
+  // Put unrated cards from last session at the front
+  if(unratedKeys.length > 0){
+    const keySet = new Set(unratedKeys);
+    const unrated = top.filter(w=>(currentLang==='zh'?w.chinese:w.malay) && keySet.has(currentLang==='zh'?w.chinese:w.malay));
+    const rest = top.filter(w=>!keySet.has(currentLang==='zh'?w.chinese:w.malay));
+    sessionQueue = [...unrated, ...rest];
+  } else {
+    sessionQueue = top;
+  }
   if(!sessionQueue.length){ alert('No words due! Come back tomorrow 🎉'); return; }
   sessionIdx=0; sessionStats={again:0,hard:0,good:0,easy:0};
   show('screen-quiz'); renderCard();
@@ -407,12 +424,21 @@ function rate(r){
   if(r===1)sessionStats.again++;else if(r===2)sessionStats.hard++;else if(r===3)sessionStats.good++;else sessionStats.easy++;
   const key = currentLang==='zh' ? w.chinese : w.malay;
   applyRating(words[key],r);
-  saveWords(words);
+  saveWords(words,[key]);
   sessionIdx++;
   if(sessionIdx>=sessionQueue.length) showSummary(); else renderCard();
 }
 
-function endSession(){ if(sessionIdx>0) showSummary(); else showHome(); }
+function endSession(){
+  // Save any unrated cards from this session so they appear next time
+  if(sessionQueue.length > 0 && sessionIdx < sessionQueue.length){
+    const unrated = sessionQueue.slice(sessionIdx).map(w=>currentLang==='zh'?w.chinese:w.malay);
+    try{ localStorage.setItem(storageKey()+'_unrated', JSON.stringify(unrated)); }catch(e){}
+  } else {
+    try{ localStorage.removeItem(storageKey()+'_unrated'); }catch(e){}
+  }
+  if(sessionIdx>0) showSummary(); else showHome();
+}
 
 function showSummary(){
   const today=todayStr(); const tomorrow=addDays(today,1);

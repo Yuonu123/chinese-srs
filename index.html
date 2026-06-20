@@ -184,7 +184,7 @@ function expandMSWords(){
   return out;
 }
 const MS_WORDS=expandMSWords();;
-const ZH_KEY = 'srs_zh_v2';
+const ZH_KEY = 'srs_zh_v3';
 const MS_KEY = 'srs_ms_v1';
 const LANG_KEY = 'srs_lang';
 
@@ -212,8 +212,18 @@ function loadWords(){
     const s = localStorage.getItem(storageKey());
     if(s){
       const progress = JSON.parse(s);
+      const today = todayStr();
       for(const [k,p] of Object.entries(progress)){
-        if(base[k]) Object.assign(base[k], p);
+        if(!base[k]) continue;
+        // Only take the 4 SRS fields; ignore old full-word blobs
+        if(p.interval !== undefined) base[k].interval = p.interval;
+        if(p.ease     !== undefined) base[k].ease     = p.ease;
+        // Only accept a stored due/reps if it represents real activity
+        // (reps > 0 means the user actually reviewed it in the web app)
+        if(p.reps > 0){
+          base[k].reps = p.reps;
+          if(p.due !== undefined) base[k].due = p.due;
+        }
       }
     }
   }catch(e){ console.warn('loadWords failed:',e); }
@@ -345,7 +355,7 @@ function renderCard(){
   const reps = w.reps||0;
 
   function escRe(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
-  const speakBtn='<button class="speak-btn" onclick="speakCurrent()" title="Listen">🔊</button><button class="speak-btn" onclick="speechSynthesis.cancel()" title="Stop">✕</button>';
+  const speakBtn='<button class="speak-btn" onclick="speakCurrent()" title="Listen">🔊</button><button class="speak-btn" onclick="speechSynthesis.cancel()" title="Stop" style="margin-left:10px">✕</button>';
   if(currentLang==='zh'){
     const blanked=w.example_zh
       ? w.example_zh.replace(new RegExp(escRe(w.chinese),'g'),'<span class="card-blank">　　　</span>')

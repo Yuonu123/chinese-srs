@@ -202,15 +202,23 @@ function defaultWords(){ return currentLang === 'zh' ? ZH_WORDS : MS_WORDS; }
 
 const _modifiedKeys = new Set();
 function saveWords(w, keys){
-  // Only write keys that changed this call, merge with what's already saved.
   try{
-    const existing = JSON.parse(localStorage.getItem(storageKey())||'{}');
+    let existing = {};
+    try{ existing = JSON.parse(localStorage.getItem(storageKey())||'{}'); }catch(e){ existing={}; }
     const toSave = keys || Object.keys(w);
     for(const k of toSave){
       if(w[k]) existing[k]={interval:w[k].interval,ease:w[k].ease,due:w[k].due,reps:w[k].reps};
     }
     localStorage.setItem(storageKey(), JSON.stringify(existing));
   }catch(e){ console.error('saveWords FAILED:', e); }
+}
+function saveAllReviewed(){
+  // Save all words that differ from baked-in defaults (full session checkpoint)
+  const base = defaultWords();
+  const toSave = Object.keys(words).filter(k=>
+    base[k] && (words[k].reps!==(base[k].reps||0) || words[k].due!==base[k].due)
+  );
+  if(toSave.length) saveWords(words, toSave);
 }
 function loadWords(){
   // Start from the baked-in defaults, then overlay any saved progress.
@@ -225,13 +233,9 @@ function loadWords(){
         // Only take the 4 SRS fields; ignore old full-word blobs
         if(p.interval !== undefined) base[k].interval = p.interval;
         if(p.ease     !== undefined) base[k].ease     = p.ease;
-        // Only accept a stored due/reps if it represents real activity
-        // (reps > 0 means the user actually reviewed it in the web app)
-        if(p.reps > 0){
-          base[k].reps = p.reps;
-          if(p.due !== undefined) base[k].due = p.due;
-        }
-      }
+        // Apply all 4 SRS fields — always trust saved progress over baked-in
+        if(p.reps !== undefined) base[k].reps = p.reps;
+        if(p.due  !== undefined) base[k].due  = p.due;}
     }
   }catch(e){ console.warn('loadWords failed:',e); }
   return base;
@@ -452,6 +456,8 @@ function rate(r){
 }
 
 function endSession(){
+  // Checkpoint: save all reviewed words before leaving
+  saveAllReviewed();
   // Save any unrated cards from this session so they appear next time
   if(sessionQueue.length > 0 && sessionIdx < sessionQueue.length){
     const unrated = sessionQueue.slice(sessionIdx).map(w=>currentLang==='zh'?w.chinese:w.malay);

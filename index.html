@@ -140,6 +140,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   <div id="ls-warning" style="display:none;background:#3a1a1a;border:1px solid var(--red);border-radius:12px;padding:12px;font-size:13px;color:var(--red);text-align:center;margin-top:4px">
     ⚠️ Progress cannot be saved on this browser.<br>Try opening in Chrome or Safari (non-private).
   </div>
+  <div id="ls-debug" style="text-align:center;font-size:11px;color:var(--text3);margin-top:4px"></div>
   <div class="home-actions">
     <button class="btn" id="btn-study" onclick="startSession()">📚 Study Now</button>
     <button class="btn btn-secondary" onclick="exportData()">Export JSON (backup)</button>
@@ -220,8 +221,20 @@ function saveWords(w, keys){
     for(const k of toSave){
       if(w[k]) existing[k]={interval:w[k].interval,ease:w[k].ease,due:w[k].due,reps:w[k].reps};
     }
-    localStorage.setItem(storageKey(), JSON.stringify(existing));
-  }catch(e){ console.error('saveWords FAILED:', e); }
+    const json = JSON.stringify(existing);
+    localStorage.setItem(storageKey(), json);
+    // Verify write
+    const readback = localStorage.getItem(storageKey());
+    const ok = readback === json;
+    const savedCount = Object.keys(existing).length;
+    console.log('[SRS] save key='+storageKey()+' count='+savedCount+' verify='+ok);
+    const dbg = document.getElementById('ls-debug');
+    if(dbg) dbg.textContent = 'Saved: '+savedCount+' words | Write OK: '+ok+' | Persists: '+(_persistOK?'YES':'first load');
+  }catch(e){
+    console.error('saveWords FAILED:', e);
+    const dbg = document.getElementById('ls-debug');
+    if(dbg) dbg.textContent = 'SAVE FAILED: '+e.message;
+  }
 }
 function saveAllReviewed(){
   // Save all words that differ from baked-in defaults (full session checkpoint)
@@ -236,17 +249,20 @@ function loadWords(){
   const base = JSON.parse(JSON.stringify(defaultWords()));
   try{
     const s = localStorage.getItem(storageKey());
+    console.log('[SRS] loadWords key='+storageKey()+' found='+(s?'YES ('+Object.keys(JSON.parse(s)).length+' words)':'NO'));
     if(s){
       const progress = JSON.parse(s);
       const today = todayStr();
+      let applied = 0;
       for(const [k,p] of Object.entries(progress)){
         if(!base[k]) continue;
-        // Only take the 4 SRS fields; ignore old full-word blobs
         if(p.interval !== undefined) base[k].interval = p.interval;
         if(p.ease     !== undefined) base[k].ease     = p.ease;
-        // Apply all 4 SRS fields — always trust saved progress over baked-in
         if(p.reps !== undefined) base[k].reps = p.reps;
-        if(p.due  !== undefined) base[k].due  = p.due;}
+        if(p.due  !== undefined) base[k].due  = p.due;
+        applied++;
+      }
+      console.log('[SRS] loadWords applied', applied, 'overrides');
     }
   }catch(e){ console.warn('loadWords failed:',e); }
   return base;
@@ -325,6 +341,11 @@ function showHome(){
   // Show storage warning if localStorage is broken
   const lsWarn = document.getElementById('ls-warning');
   if(lsWarn) lsWarn.style.display = _lsOK ? 'none' : 'block';
+  // Debug: show what's saved in localStorage
+  let _savedCount = 0;
+  try{ const _s=localStorage.getItem(storageKey()); if(_s) _savedCount=Object.keys(JSON.parse(_s)).length; }catch(e){}
+  const _dbg = document.getElementById('ls-debug');
+  if(_dbg) _dbg.textContent = 'LS persists: '+(_persistOK?'YES':'NO (first load)')+' | Saved words: '+_savedCount;
   document.getElementById('today-date').textContent = today;
   show('screen-home');
 }
@@ -526,6 +547,13 @@ function importData(e){
 }
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
+// Persistence test: write a stamp on this load, check if previous stamp survived
+const _stampKey = 'persist_test';
+const _lastStamp = localStorage.getItem(_stampKey);
+const _thisStamp = Date.now().toString();
+try{ localStorage.setItem(_stampKey, _thisStamp); }catch(e){}
+const _persistOK = !!_lastStamp; // true if a previous write survived
+
 try{ showHome(); }catch(e){ console.error('Boot error:', e); }
 document.getElementById('loading-overlay').classList.add('done');
 </script>

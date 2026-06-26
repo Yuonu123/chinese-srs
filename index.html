@@ -330,13 +330,13 @@ function startSession(){
   // Priority: high reps first (protect established words), then most overdue
   const due = Object.values(words).filter(w=>w.due<=today);
   due.sort((a,b)=>{
-    // 1. Higher reps first (protect established words)
-    const repDiff = (b.reps||0) - (a.reps||0);
-    if(repDiff!==0) return repDiff;
-    // 2. Higher HSK level first (harder words get priority)
+    // 1. Higher HSK level first (HSK6 before HSK5, etc.)
     const aLvl = currentLang==='zh' ? (HSK_LEVEL[a.chinese]||0) : 0;
     const bLvl = currentLang==='zh' ? (HSK_LEVEL[b.chinese]||0) : 0;
     if(bLvl!==aLvl) return bLvl - aLvl;
+    // 2. Higher reps first (protect established words within same level)
+    const repDiff = (b.reps||0) - (a.reps||0);
+    if(repDiff!==0) return repDiff;
     // 3. Most overdue first
     return a.due < b.due ? -1 : a.due > b.due ? 1 : 0;
   });

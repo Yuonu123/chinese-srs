@@ -137,6 +137,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div class="stat-label">Reviewed today</div>
     </div>
   </div>
+  <div id="ls-warning" style="display:none;background:#3a1a1a;border:1px solid var(--red);border-radius:12px;padding:12px;font-size:13px;color:var(--red);text-align:center;margin-top:4px">
+    ⚠️ Progress cannot be saved on this browser.<br>Try opening in Chrome or Safari (non-private).
+  </div>
   <div class="home-actions">
     <button class="btn" id="btn-study" onclick="startSession()">📚 Study Now</button>
     <button class="btn btn-secondary" onclick="exportData()">Export JSON (backup)</button>
@@ -195,6 +198,14 @@ const MS_KEY = 'srs_ms_v1';
 const LANG_KEY = 'srs_lang';
 
 let currentLang = localStorage.getItem(LANG_KEY) || 'zh';
+
+// ── localStorage availability check ────────────────────────────────────────
+let _lsOK = false;
+try{
+  localStorage.setItem('__test__','1');
+  _lsOK = localStorage.getItem('__test__') === '1';
+  localStorage.removeItem('__test__');
+}catch(e){ _lsOK = false; }
 
 // ── STORAGE ─────────────────────────────────────────────────────────────────
 function storageKey(){ return currentLang === 'zh' ? ZH_KEY : MS_KEY; }
@@ -311,6 +322,9 @@ function showHome(){
   const color = currentLang==='zh'?'var(--accent)':'var(--accent-ms)';
   document.getElementById('stat-reviewed').textContent = reviewedToday;
   document.getElementById('stat-reviewed').style.color = color;
+  // Show storage warning if localStorage is broken
+  const lsWarn = document.getElementById('ls-warning');
+  if(lsWarn) lsWarn.style.display = _lsOK ? 'none' : 'block';
   document.getElementById('today-date').textContent = today;
   show('screen-home');
 }

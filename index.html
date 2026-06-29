@@ -175,7 +175,10 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
 <!-- SUMMARY -->
 <div id="screen-batch" class="hidden screen">
-  <div class="batch-header" id="batch-header">Rate each word</div>
+  <div style="display:flex;align-items:center;padding:12px 16px 0">
+    <button onclick="endSession()" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;padding:4px 8px">✕</button>
+    <div class="batch-header" id="batch-header" style="flex:1;padding:0;margin:0">Rate each word</div>
+  </div>
   <div id="batch-list" class="batch-list"></div>
   <div style="padding:0 16px 24px">
     <button class="btn btn-zh" id="batch-submit" onclick="submitBatch()">Submit →</button>
@@ -573,21 +576,24 @@ function renderFlashCard(){
       +'<div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text3)">tap card to skip →</div>';
   }
 
+  // Countdown bar for 6s silent writing period
   const bar=document.getElementById('cbar');
-  if(bar){void bar.offsetWidth;bar.style.animation='countdown '+FLASH_MS+'ms linear forwards';}
-  setTimeout(()=>{
-    if(currentLang==='zh') speak(w.example_zh||w.chinese,'zh-CN');
-    else speak(w.example_ms||w.malay,'ms-MY');
-  },150);
+  if(bar){void bar.offsetWidth;bar.style.animation='countdown 6s linear forwards';}
   document.getElementById('q-show-btn').classList.add('hidden');
   document.getElementById('q-answer-area').classList.add('hidden');
   show('screen-quiz');
-  if(_flashTimer) clearTimeout(_flashTimer);
-  _flashTimer=setTimeout(()=>{_batchFlashIdx++;renderFlashCard();},FLASH_MS);
+  // After 6s: play TTS, then wait 6s more before advancing
+  if(_flashTimer){ clearTimeout(_flashTimer); _flashTimer=null; }
+  _flashTimer=setTimeout(()=>{
+    const text=currentLang==='zh'?(w.example_zh||w.chinese):(w.example_ms||w.malay);
+    const lang=currentLang==='zh'?'zh-CN':'ms-MY';
+    speakThenAdvance(text,lang);
+  },6000);
 }
 
 function advanceFlash(){
-  if(_flashTimer) clearTimeout(_flashTimer);
+  speechSynthesis.cancel();
+  if(_flashTimer){ clearTimeout(_flashTimer); _flashTimer=null; }
   _batchFlashIdx++;
   renderFlashCard();
 }
@@ -597,6 +603,15 @@ function speakFlash(){
   if(!w) return;
   if(currentLang==='zh') speak(w.example_zh||w.chinese,'zh-CN');
   else speak(w.example_ms||w.malay,'ms-MY');
+}
+function speakThenAdvance(text, lang){
+  if(!window.speechSynthesis){ _flashTimer=setTimeout(()=>{_batchFlashIdx++;renderFlashCard();},6000); return; }
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang=lang; u.rate=1.1;
+  const next=()=>{ _flashTimer=setTimeout(()=>{_batchFlashIdx++;renderFlashCard();},6000); };
+  u.onend=next; u.onerror=next;
+  speechSynthesis.speak(u);
 }
 
 function showBatchReview(){
@@ -683,6 +698,8 @@ async function rate(r){
 }
 
 async function endSession(){
+  if(_flashTimer){ clearTimeout(_flashTimer); _flashTimer=null; }
+  speechSynthesis.cancel();
   // Checkpoint: save all reviewed words before leaving
   await saveAllReviewed();
   // Save any unrated cards from this session so they appear next time

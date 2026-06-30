@@ -518,7 +518,6 @@ function renderCard(){
 
 // ── BATCH MODE ────────────────────────────────────────────────────────────────
 const BATCH_SIZE = 10;
-const FLASH_MS = 4000;
 let currentBatch = [];
 let _batchFlashIdx = 0;
 let _batchRatings = [];
@@ -533,15 +532,13 @@ function startBatchFlash(){
 }
 
 function renderFlashCard(){
-  if(_batchFlashIdx >= currentBatch.length){
-    if(_flashTimer) clearTimeout(_flashTimer);
-    showBatchReview();
-    return;
-  }
+  if(!_batchActive) return;
+  if(_batchFlashIdx >= currentBatch.length){ showBatchReview(); return; }
   const w = currentBatch[_batchFlashIdx];
   const batchNum = Math.floor(sessionIdx/BATCH_SIZE)+1;
   const totalBatches = Math.ceil(sessionQueue.length/BATCH_SIZE);
 
+  // Update header
   document.getElementById('q-current').textContent = _batchFlashIdx+1;
   document.getElementById('q-total').textContent = currentBatch.length;
   document.getElementById('q-progress-fill').style.width=(_batchFlashIdx/currentBatch.length*100)+'%';
@@ -551,91 +548,102 @@ function renderFlashCard(){
   else{badge.textContent='🇲🇾 Malay';badge.className='quiz-lang-badge badge-ms';}
 
   function escRe(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
-  const speakBtns='<button class="speak-btn" onclick="speakFlash()" title="Listen">🔊</button>'
-    +'<button class="speak-btn" onclick="speechSynthesis.cancel()" title="Stop" style="margin-left:10px">✕</button>';
+  const speakBtns='<button class="speak-btn" onclick="speakFlash()">🔊</button>'
+    +'<button class="speak-btn" onclick="stopFlash()" style="margin-left:10px">✕</button>';
   const cardEl=document.getElementById('q-card');
 
+  let blanked, exHint, extra='';
   if(currentLang==='zh'){
-    const blanked=w.example_zh
+    blanked=w.example_zh
       ?w.example_zh.replace(new RegExp(escRe(w.chinese),'g'),'<span class="card-blank">　　　</span>')
       :'<span class="card-hint">No sentence yet</span>';
-    const exHint=w.example_en?'<div class="card-hint" style="margin-top:4px;font-style:italic;color:var(--text3);font-size:13px">'+esc(w.example_en)+'</div>':'';
-    cardEl.innerHTML='<div class="card-label">Batch '+batchNum+'/'+totalBatches+'  '+speakBtns+'</div>'
-      +'<div class="card-sentence" onclick="advanceFlash()" style="cursor:pointer">'+blanked+'</div>'
-      +'<div class="card-hint" style="margin-top:8px">💡 '+esc(w.meaning)+'</div>'+exHint
-      +'<div id="flash-reveal" style="display:none"></div>'
-      +'<div class="countdown-wrap"><div class="countdown-bar" id="cbar"></div></div>'
-      +'<div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text3)">tap card to skip →</div>';
+    exHint=w.example_en?'<div class="card-hint" style="margin-top:4px;font-style:italic;color:var(--text3);font-size:13px">'+esc(w.example_en)+'</div>':'';
   } else {
-    const blanked=w.example_ms
+    blanked=w.example_ms
       ?w.example_ms.replace(new RegExp(escRe(w.malay),'gi'),'<span class="card-blank card-blank-ms">　　　</span>')
       :'<span class="card-hint">No sentence yet</span>';
-    const exHint=w.example_en?'<div class="card-hint" style="margin-top:4px;font-style:italic;color:var(--text3);font-size:13px">'+esc(w.example_en)+'</div>':'';
-    cardEl.innerHTML='<div class="card-label">Batch '+batchNum+'/'+totalBatches+'  '+speakBtns+'</div>'
-      +'<div class="card-sentence" onclick="advanceFlash()" style="cursor:pointer">'+blanked+'</div>'
-      +'<div class="card-hint" style="margin-top:8px">💡 '+esc(w.meaning)+'</div>'+exHint
-      +(w.cefr?'<div class="card-cefr">CEFR '+esc(w.cefr)+'</div>':'')
-      +'<div id="flash-reveal" style="display:none"></div>'
-      +'<div class="countdown-wrap"><div class="countdown-bar" id="cbar"></div></div>'
-      +'<div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text3)">tap card to skip →</div>';
+    exHint=w.example_en?'<div class="card-hint" style="margin-top:4px;font-style:italic;color:var(--text3);font-size:13px">'+esc(w.example_en)+'</div>':'';
+    if(w.cefr) extra='<div class="card-cefr">CEFR '+esc(w.cefr)+'</div>';
   }
 
-  // Countdown bar for 6s silent writing period
-  const bar=document.getElementById('cbar');
-  if(bar){void bar.offsetWidth;bar.style.animation='countdown 6s linear forwards';}
+  cardEl.innerHTML=
+    '<div class="card-label">Batch '+batchNum+'/'+totalBatches+'  '+speakBtns+'</div>'
+    +'<div class="card-sentence" onclick="advanceFlash()" style="cursor:pointer">'+blanked+'</div>'
+    +'<div class="card-hint" style="margin-top:8px">\uD83D\uDCA1 '+esc(w.meaning)+'</div>'
+    +exHint+extra
+    +'<div id="flash-reveal" style="display:none"></div>'
+    +'<div class="countdown-wrap"><div class="countdown-bar" id="cbar"></div></div>'
+    +'<div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text3)">tap to skip →</div>';
+
   document.getElementById('q-show-btn').classList.add('hidden');
   document.getElementById('q-answer-area').classList.add('hidden');
   show('screen-quiz');
-  // After 6s: play TTS, then wait 6s more before advancing
-  if(_flashTimer){ clearTimeout(_flashTimer); _flashTimer=null; }
-  _flashTimer=setTimeout(()=>{
-    const text=currentLang==='zh'?(w.example_zh||w.chinese):(w.example_ms||w.malay);
-    const lang=currentLang==='zh'?'zh-CN':'ms-MY';
-    speakThenAdvance(text,lang);
-  },6000);
-}
 
-function advanceFlash(){
-  if(!_batchActive) return;
-  speechSynthesis.cancel();
+  // Clear any previous timer
   if(_flashTimer){ clearTimeout(_flashTimer); _flashTimer=null; }
-  _batchFlashIdx++;
-  renderFlashCard();
+
+  // Play TTS immediately, then 6s writing, then reveal, then 6s, then next
+  const text=currentLang==='zh'?(w.example_zh||w.chinese):(w.example_ms||w.malay);
+  const lang=currentLang==='zh'?'zh-CN':'ms-MY';
+
+  const afterReveal=()=>{
+    if(!_batchActive) return;
+    // Start countdown bar for 6s check period
+    const bar=document.getElementById('cbar');
+    if(bar){void bar.offsetWidth;bar.style.animation='countdown 6s linear forwards';}
+    _flashTimer=setTimeout(()=>{ if(_batchActive){_batchFlashIdx++;renderFlashCard();} },6000);
+  };
+
+  const revealAndWait=()=>{
+    if(!_batchActive) return;
+    // Reveal word
+    const display=currentLang==='zh'?w.chinese:w.malay;
+    const sub=currentLang==='zh'&&w.pinyin?'<div style="font-size:14px;color:var(--text2);margin-top:2px">'+esc(w.pinyin)+'</div>':'';
+    const color=currentLang==='zh'?'var(--accent)':'var(--accent-ms)';
+    const el=document.getElementById('flash-reveal');
+    if(el){el.innerHTML='<div style="text-align:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-size:32px;font-weight:700;color:'+color+'">'+esc(display)+'</div>'+sub+'</div>';el.style.display='block';}
+    _flashTimer=setTimeout(afterReveal,0); // yield then run afterReveal
+  };
+
+  const afterTTS=()=>{
+    if(!_batchActive) return;
+    // 6s writing time, then reveal
+    _flashTimer=setTimeout(revealAndWait,6000);
+  };
+
+  if(window.speechSynthesis){
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang=lang; u.rate=1.1;
+    u.onend=afterTTS;
+    u.onerror=e=>{ if(e&&e.error==='interrupted') return; afterTTS(); };
+    speechSynthesis.speak(u);
+  } else {
+    afterTTS();
+  }
 }
 
 function speakFlash(){
   const w=currentBatch[_batchFlashIdx];
   if(!w) return;
-  if(currentLang==='zh') speak(w.example_zh||w.chinese,'zh-CN');
-  else speak(w.example_ms||w.malay,'ms-MY');
+  const text=currentLang==='zh'?(w.example_zh||w.chinese):(w.example_ms||w.malay);
+  const lang=currentLang==='zh'?'zh-CN':'ms-MY';
+  speak(text,lang);
 }
-function revealFlashWord(){
-  const w=currentBatch[_batchFlashIdx];
-  if(!w) return;
-  const display=currentLang==='zh'?w.chinese:w.malay;
-  const sub=currentLang==='zh'&&w.pinyin?'<div style="font-size:14px;color:var(--text2);margin-top:2px">'+esc(w.pinyin)+'</div>':'';
-  const color=currentLang==='zh'?'var(--accent)':'var(--accent-ms)';
-  const el=document.getElementById('flash-reveal');
-  if(el){el.innerHTML='<div style="text-align:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-size:32px;font-weight:700;color:'+color+'">'+esc(display)+'</div>'+sub+'</div>';el.style.display='block';}
-}
-function speakThenAdvance(text, lang){
-  const proceed=()=>{
-    if(!_batchActive) return;
-    revealFlashWord();
-    if(_flashTimer){ clearTimeout(_flashTimer); _flashTimer=null; }
-    _flashTimer=setTimeout(()=>{ if(_batchActive){_batchFlashIdx++;renderFlashCard();} },6000);
-  };
-  if(!window.speechSynthesis){ proceed(); return; }
+function stopFlash(){ speechSynthesis.cancel(); }
+
+function advanceFlash(){
+  if(!_batchActive) return;
   speechSynthesis.cancel();
-  const u=new SpeechSynthesisUtterance(text);
-  u.lang=lang; u.rate=1.1;
-  u.onend=proceed;
-  u.onerror=e=>{ if(e.error!=='interrupted'&&_batchActive) proceed(); };
-  speechSynthesis.speak(u);
+  if(_flashTimer){clearTimeout(_flashTimer);_flashTimer=null;}
+  _batchFlashIdx++;
+  renderFlashCard();
 }
 
 function showBatchReview(){
+  if(!_batchActive) return;
   speechSynthesis.cancel();
+  if(_flashTimer){clearTimeout(_flashTimer);_flashTimer=null;}
   const batchNum=Math.floor(sessionIdx/BATCH_SIZE)+1;
   const totalBatches=Math.ceil(sessionQueue.length/BATCH_SIZE);
   document.getElementById('batch-header').textContent='Batch '+batchNum+'/'+totalBatches+' — did you know it?';
@@ -645,12 +653,12 @@ function showBatchReview(){
   currentBatch.forEach((w,i)=>{
     const display=currentLang==='zh'?w.chinese:w.malay;
     const fs=currentLang==='zh'?'20':'15';
-    html+=`<div class="batch-row" id="brow-${i}">
-      <div style="min-width:60px;font-size:${fs}px;font-weight:600">${esc(display)}</div>
-      <div style="flex:1;font-size:12px;color:var(--text2);padding:0 6px">${esc(w.meaning)}</div>
-      <button class="batch-btn batch-ok active" onclick="setBatchRating(${i},3,this)">✓</button>
-      <button class="batch-btn batch-ng" onclick="setBatchRating(${i},1,this)">✗</button>
-    </div>`;
+    html+='<div class="batch-row" id="brow-'+i+'">'
+      +'<div style="min-width:60px;font-size:'+fs+'px;font-weight:600">'+esc(display)+'</div>'
+      +'<div style="flex:1;font-size:12px;color:var(--text2);padding:0 6px">'+esc(w.meaning)+'</div>'
+      +'<button class="batch-btn batch-ok active" onclick="setBatchRating('+i+',3,this)">✓</button>'
+      +'<button class="batch-btn batch-ng" onclick="setBatchRating('+i+',1,this)">✗</button>'
+      +'</div>';
   });
   document.getElementById('batch-list').innerHTML=html;
   show('screen-batch');
@@ -721,16 +729,16 @@ async function endSession(){
   _batchActive = false;
   if(_flashTimer){ clearTimeout(_flashTimer); _flashTimer=null; }
   speechSynthesis.cancel();
-  // Checkpoint: save all reviewed words before leaving
-  await saveAllReviewed();
-  // Save any unrated cards from this session so they appear next time
+  // Navigate immediately for instant response
+  if(sessionIdx>0) showSummary(); else await showHome();
+  // Save in background
+  saveAllReviewed();
   if(sessionQueue.length > 0 && sessionIdx < sessionQueue.length){
     const unrated = sessionQueue.slice(sessionIdx).map(w=>currentLang==='zh'?w.chinese:w.malay);
-    await sSet(storageKey()+'_unrated', JSON.stringify(unrated));
+    sSet(storageKey()+'_unrated', JSON.stringify(unrated));
   } else {
-    await sDel(storageKey()+'_unrated');
+    sDel(storageKey()+'_unrated');
   }
-  if(sessionIdx>0) showSummary(); else await showHome();
 }
 
 function showSummary(){

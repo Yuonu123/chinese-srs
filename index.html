@@ -523,8 +523,10 @@ let currentBatch = [];
 let _batchFlashIdx = 0;
 let _batchRatings = [];
 let _flashTimer = null;
+let _batchActive = false;
 
 function startBatchFlash(){
+  _batchActive = true;
   _batchFlashIdx = 0;
   _batchRatings = new Array(currentBatch.length).fill(3);
   renderFlashCard();
@@ -561,6 +563,7 @@ function renderFlashCard(){
     cardEl.innerHTML='<div class="card-label">Batch '+batchNum+'/'+totalBatches+'  '+speakBtns+'</div>'
       +'<div class="card-sentence" onclick="advanceFlash()" style="cursor:pointer">'+blanked+'</div>'
       +'<div class="card-hint" style="margin-top:8px">💡 '+esc(w.meaning)+'</div>'+exHint
+      +'<div id="flash-reveal" style="display:none"></div>'
       +'<div class="countdown-wrap"><div class="countdown-bar" id="cbar"></div></div>'
       +'<div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text3)">tap card to skip →</div>';
   } else {
@@ -572,6 +575,7 @@ function renderFlashCard(){
       +'<div class="card-sentence" onclick="advanceFlash()" style="cursor:pointer">'+blanked+'</div>'
       +'<div class="card-hint" style="margin-top:8px">💡 '+esc(w.meaning)+'</div>'+exHint
       +(w.cefr?'<div class="card-cefr">CEFR '+esc(w.cefr)+'</div>':'')
+      +'<div id="flash-reveal" style="display:none"></div>'
       +'<div class="countdown-wrap"><div class="countdown-bar" id="cbar"></div></div>'
       +'<div style="text-align:center;margin-top:6px;font-size:11px;color:var(--text3)">tap card to skip →</div>';
   }
@@ -592,6 +596,7 @@ function renderFlashCard(){
 }
 
 function advanceFlash(){
+  if(!_batchActive) return;
   speechSynthesis.cancel();
   if(_flashTimer){ clearTimeout(_flashTimer); _flashTimer=null; }
   _batchFlashIdx++;
@@ -604,13 +609,28 @@ function speakFlash(){
   if(currentLang==='zh') speak(w.example_zh||w.chinese,'zh-CN');
   else speak(w.example_ms||w.malay,'ms-MY');
 }
+function revealFlashWord(){
+  const w=currentBatch[_batchFlashIdx];
+  if(!w) return;
+  const display=currentLang==='zh'?w.chinese:w.malay;
+  const sub=currentLang==='zh'&&w.pinyin?'<div style="font-size:14px;color:var(--text2);margin-top:2px">'+esc(w.pinyin)+'</div>':'';
+  const color=currentLang==='zh'?'var(--accent)':'var(--accent-ms)';
+  const el=document.getElementById('flash-reveal');
+  if(el){el.innerHTML='<div style="text-align:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-size:32px;font-weight:700;color:'+color+'">'+esc(display)+'</div>'+sub+'</div>';el.style.display='block';}
+}
 function speakThenAdvance(text, lang){
-  if(!window.speechSynthesis){ _flashTimer=setTimeout(()=>{_batchFlashIdx++;renderFlashCard();},6000); return; }
+  const proceed=()=>{
+    if(!_batchActive) return;
+    revealFlashWord();
+    if(_flashTimer){ clearTimeout(_flashTimer); _flashTimer=null; }
+    _flashTimer=setTimeout(()=>{ if(_batchActive){_batchFlashIdx++;renderFlashCard();} },6000);
+  };
+  if(!window.speechSynthesis){ proceed(); return; }
   speechSynthesis.cancel();
   const u=new SpeechSynthesisUtterance(text);
   u.lang=lang; u.rate=1.1;
-  const next=()=>{ _flashTimer=setTimeout(()=>{_batchFlashIdx++;renderFlashCard();},6000); };
-  u.onend=next; u.onerror=next;
+  u.onend=proceed;
+  u.onerror=e=>{ if(e.error!=='interrupted'&&_batchActive) proceed(); };
   speechSynthesis.speak(u);
 }
 
@@ -698,6 +718,7 @@ async function rate(r){
 }
 
 async function endSession(){
+  _batchActive = false;
   if(_flashTimer){ clearTimeout(_flashTimer); _flashTimer=null; }
   speechSynthesis.cancel();
   // Checkpoint: save all reviewed words before leaving
@@ -709,7 +730,7 @@ async function endSession(){
   } else {
     await sDel(storageKey()+'_unrated');
   }
-  if(sessionIdx>0) showSummary(); else showHome();
+  if(sessionIdx>0) showSummary(); else await showHome();
 }
 
 function showSummary(){

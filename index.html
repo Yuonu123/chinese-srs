@@ -200,7 +200,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
   <div style="text-align:center;font-size:44px;">🎉</div>
   <div class="summary-title">Session Complete!</div>
   <div class="summary-card" id="summary-content"></div>
-  <button class="btn" id="btn-summary-home" style="margin-top:8px" onclick="showHome()">Back to Home</button>
+  <button type="button" class="btn" id="btn-summary-home" style="margin-top:8px" onclick="showHome().catch(()=>show('screen-home'))">Back to Home</button>
 </div>
 
 </div>
@@ -684,20 +684,29 @@ function setBatchRating(idx,rating,btn){
 }
 
 async function submitBatch(){
+  // 1. Apply all ratings in memory first
+  const keys=[];
   for(let i=0;i<currentBatch.length;i++){
     const w=currentBatch[i];
     const key=currentLang==='zh'?w.chinese:w.malay;
     const r=_batchRatings[i]??3;
     if(r===1)sessionStats.again++;else sessionStats.good++;
     applyRating(words[key],r);
-    await saveWords(words,[key]);
+    keys.push(key);
+  }
+  // 2. Save all at once (one read + one write)
+  try{ await saveWords(words,keys); }catch(e){ console.error('[SRS] submitBatch save failed:',e); }
+  // 3. Update reviewed count
+  try{
     const rKey='reviewed_'+todayStr()+'_'+currentLang;
     const cur=parseInt((await sGet(rKey))||'0');
-    await sSet(rKey,String(cur+1));
-  }
+    await sSet(rKey,String(cur+keys.length));
+  }catch(e){}
+  // 4. Advance
+  _batchActive=false;
   sessionIdx+=currentBatch.length;
-  if(sessionIdx>=sessionQueue.length){showSummary();}
-  else{currentBatch=sessionQueue.slice(sessionIdx,sessionIdx+BATCH_SIZE);startBatchFlash();}
+  if(sessionIdx>=sessionQueue.length){ showSummary(); }
+  else{ currentBatch=sessionQueue.slice(sessionIdx,sessionIdx+BATCH_SIZE); _batchActive=true; startBatchFlash(); }
 }
 
 function showAnswer(){

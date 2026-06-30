@@ -235,7 +235,7 @@ const _mem = {}; // in-memory fallback (session-only)
 let _idb = null;
 let _storageMode = _lsOK ? 'ls' : 'mem'; // updated after IDB init
 
-async async function _initIDB(){
+async function _initIDB(){
   try{
     _idb = await new Promise((res,rej)=>{
       const r = indexedDB.open('chinese_srs_db',1);

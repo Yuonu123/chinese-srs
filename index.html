@@ -235,7 +235,7 @@ const _mem = {}; // in-memory fallback (session-only)
 let _idb = null;
 let _storageMode = _lsOK ? 'ls' : 'mem'; // updated after IDB init
 
-async function _initIDB(){
+async async function _initIDB(){
   try{
     _idb = await new Promise((res,rej)=>{
       const r = indexedDB.open('chinese_srs_db',1);
@@ -327,10 +327,13 @@ async function saveAllReviewed(){
   if(toSave.length) await saveWords(words, toSave);
 }
 async function loadWords(){
-  const base = JSON.parse(JSON.stringify(defaultWords()));
+  // Shallow copy (word fields are all primitives — no nested objects)
+  const defaults = defaultWords();
+  const base = {};
+  const keys = Object.keys(defaults);
+  for(let i=0;i<keys.length;i++){ base[keys[i]]=Object.assign({},defaults[keys[i]]); }
   try{
     const s = await sGet(storageKey());
-    console.log('[SRS] loadWords mode='+_storageMode+' found='+(s?'YES ('+Object.keys(JSON.parse(s)).length+' words)':'NO'));
     if(s){
       const progress = JSON.parse(s);
       for(const [k,p] of Object.entries(progress)){
@@ -804,6 +807,50 @@ function importData(e){
     try{
       const data=JSON.parse(ev.target.result);
       const w=data.words||data;
-      // Auto-detect language from data
+      // Auto-detect language
       const firstWord = Object.values(w)[0];
-      if(firstWor
+      if(firstWord && firstWord.malay) currentLang='ms';
+      else if(firstWord && firstWord.chinese) currentLang='zh';
+      // Update words in memory immediately, then save
+      words = {};
+      const defaults = currentLang==='zh' ? ZH_WORDS : MS_WORDS;
+      const wkeys = Object.keys(defaults);
+      for(let i=0;i<wkeys.length;i++){ words[wkeys[i]]=Object.assign({},defaults[wkeys[i]]); }
+      // Merge imported progress
+      for(const [k,p] of Object.entries(w)){
+        if(!words[k]) continue;
+        if(p.interval!==undefined) words[k].interval=p.interval;
+        if(p.ease!==undefined) words[k].ease=p.ease;
+        if(p.reps!==undefined) words[k].reps=p.reps;
+        if(p.due!==undefined) words[k].due=p.due;
+      }
+      wordsLang=currentLang;
+      saveWords(words); // fire-and-forget save
+      showHome();
+      alert('Imported '+Object.keys(w).length+' words!');
+    }catch(err){alert('Invalid JSON file.');}
+  };
+  reader.readAsText(file); e.target.value='';
+}
+
+// ── BOOT ─────────────────────────────────────────────────────────────────────
+// Safety: force-remove loading overlay after 8s even if boot hangs
+setTimeout(()=>{
+  const ol=document.getElementById('loading-overlay');
+  if(ol&&!ol.classList.contains('done')){ol.classList.add('done');try{show('screen-home');}catch(e){}}
+},8000);
+
+(async()=>{
+  try{
+    if(!_lsOK) await _initIDB();
+    currentLang=(await sGet(LANG_KEY))||'zh';
+    words=await loadWords();
+    wordsLang=currentLang;
+    await showHome();
+  }catch(e){ console.error('[SRS] Boot error:',e); try{await showHome();}catch(e2){} }
+  document.getElementById('loading-overlay').classList.add('done');
+})();
+</script>
+</div>
+</body>
+</html>

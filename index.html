@@ -694,6 +694,12 @@ function setBatchRating(idx,rating,btn){
 }
 
 async function submitBatch(){
+  // Guard: stop any in-flight flash timers immediately so stale callbacks can't re-enter
+  if(!_batchActive) return;
+  _batchActive=false;
+  if(_flashTimer){ clearTimeout(_flashTimer); _flashTimer=null; }
+  speechSynthesis.cancel();
+
   // 1. Apply all ratings in memory first
   const keys=[];
   for(let i=0;i<currentBatch.length;i++){
@@ -701,8 +707,8 @@ async function submitBatch(){
     const key=currentLang==='zh'?w.chinese:w.malay;
     const r=_batchRatings[i]??3;
     if(r===1)sessionStats.again++;else sessionStats.good++;
-    applyRating(words[key],r);
-    keys.push(key);
+    if(words[key]) applyRating(words[key],r);
+    if(key) keys.push(key);
   }
   // 2. Save all at once (one read + one write)
   try{ await saveWords(words,keys); }catch(e){ console.error('[SRS] submitBatch save failed:',e); }
@@ -713,7 +719,6 @@ async function submitBatch(){
     await sSet(rKey,String(cur+keys.length));
   }catch(e){}
   // 4. Advance
-  _batchActive=false;
   sessionIdx+=currentBatch.length;
   if(sessionIdx>=sessionQueue.length){ showSummary(); }
   else{ currentBatch=sessionQueue.slice(sessionIdx,sessionIdx+BATCH_SIZE); _batchActive=true; startBatchFlash(); }

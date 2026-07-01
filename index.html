@@ -475,6 +475,7 @@ async function startSession(){
   }
   if(!sessionQueue.length){ alert('No words due! Come back tomorrow 🎉'); return; }
   sessionIdx=0; sessionStats={again:0,hard:0,good:0,easy:0};
+  _submitting=false;
   currentBatch = sessionQueue.slice(0, BATCH_SIZE);
   startBatchFlash();
 }
@@ -693,21 +694,28 @@ function setBatchRating(idx,rating,btn){
   btn.classList.add('active');
 }
 
+let _submitting=false;
 async function submitBatch(){
-  // Guard: stop any in-flight flash timers immediately so stale callbacks can't re-enter
-  if(!_batchActive) return;
+  // Prevent double-submit
+  if(_submitting) return;
+  _submitting=true;
+  // Kill all flash timers immediately so stale callbacks can't fire during awaits
   _batchActive=false;
   if(_flashTimer){ clearTimeout(_flashTimer); _flashTimer=null; }
-  speechSynthesis.cancel();
+  try{ speechSynthesis.cancel(); }catch(e){}
+
+  // Snapshot batch before any await
+  const batchToRate=currentBatch.slice();
+  const ratingsSnapshot=_batchRatings.slice();
 
   // 1. Apply all ratings in memory first
   const keys=[];
-  for(let i=0;i<currentBatch.length;i++){
-    const w=currentBatch[i];
+  for(let i=0;i<batchToRate.length;i++){
+    const w=batchToRate[i];
     const key=currentLang==='zh'?w.chinese:w.malay;
-    const r=_batchRatings[i]??3;
+    const r=ratingsSnapshot[i]??3;
     if(r===1)sessionStats.again++;else sessionStats.good++;
-    if(words[key]) applyRating(words[key],r);
+    if(key && words[key]) applyRating(words[key],r);
     if(key) keys.push(key);
   }
   // 2. Save all at once (one read + one write)
@@ -719,9 +727,14 @@ async function submitBatch(){
     await sSet(rKey,String(cur+keys.length));
   }catch(e){}
   // 4. Advance
-  sessionIdx+=currentBatch.length;
-  if(sessionIdx>=sessionQueue.length){ showSummary(); }
-  else{ currentBatch=sessionQueue.slice(sessionIdx,sessionIdx+BATCH_SIZE); _batchActive=true; startBatchFlash(); }
+  sessionIdx+=batchToRate.length;
+  if(sessionIdx>=sessionQueue.length){ _submitting=false; showSummary(); }
+  else{
+    currentBatch=sessionQueue.slice(sessionIdx,sessionIdx+BATCH_SIZE);
+    _submitting=false;
+    _batchActive=true;
+    startBatchFlash();
+  }
 }
 
 function showAnswer(){

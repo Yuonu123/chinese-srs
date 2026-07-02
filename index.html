@@ -216,6 +216,7 @@ function expandMSWords(){
   return out;
 }
 const MS_WORDS=expandMSWords();;
+const ZH_KEY = 'srs_zh_v1';
 const MS_KEY = 'srs_ms_v1';
 const LANG_KEY = 'srs_lang';
 
@@ -862,6 +863,14 @@ setTimeout(()=>{
   try{
     if(!_lsOK) await _initIDB();
     currentLang=(await sGet(LANG_KEY))||'zh';
+    // ── Migrate old "undefined" key → ZH_KEY (one-time) ──────────────────
+    try{
+      const already = await sGet(ZH_KEY);
+      if(!already){
+        const old = await sGet('undefined');
+        if(old){ await sSet(ZH_KEY, old); await sDel('undefined'); console.log('[SRS] Migrated old storage key ✓'); }
+      }
+    }catch(e){}
     words=await loadWords();
     wordsLang=currentLang;
     await showHome();

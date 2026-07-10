@@ -370,7 +370,7 @@ function applyRating(word,r){
   } else if(word.reps<1){
     ni=1; ne=word.ease; word.reps=1;
   } else if(word.reps<2){
-    ni=3; ne=word.ease; word.reps=2;
+    ni=20; ne=word.ease; word.reps=2;
   } else {
     [ni,ne]=sm2(word.interval,word.ease,r);
     word.reps=(word.reps||0)+1;

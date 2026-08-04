@@ -94,6 +94,14 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .speak-btn{background:none;border:none;cursor:pointer;font-size:16px;padding:0 4px;vertical-align:middle;opacity:0.7;touch-action:manipulation;}
 .speak-btn:active{opacity:1;}
 
+/* MULTIPLE CHOICE */
+.mc-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;}
+.mc-opt{padding:16px 8px;border-radius:var(--r);border:2px solid var(--border);background:var(--card2);color:var(--text);font-size:20px;font-weight:600;cursor:pointer;touch-action:manipulation;-webkit-user-select:none;user-select:none;transition:transform 0.1s;}
+.mc-opt:active:not(:disabled){transform:scale(0.96);}
+.mc-opt:disabled{cursor:default;}
+.mc-opt.mc-correct{background:#1a2a1a;border-color:var(--green);color:var(--green);}
+.mc-opt.mc-wrong{background:#3a1a1a;border-color:var(--red);color:var(--red);}
+
 /* LOADING OVERLAY */
 #loading-overlay{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;}
 #loading-overlay.done{display:none;}
@@ -547,17 +555,179 @@ let _batchFlashIdx = 0;
 let _batchRatings = [];
 let _flashTimer = null;
 let _batchActive = false;
+let _pendingSaveKeys = [];
+let _mcAnswered = false;
+let CHAR_BASE_PINYIN = null;
+let PINYIN_TO_CHARS = null;
+
+function toBasePinyin(syll){
+  if(!syll) return '';
+  var COMBINING_MARKS = new RegExp('[\\u0300-\\u036f]', 'g');
+  return syll.toLowerCase()
+    .normalize('NFD').replace(COMBINING_MARKS,'')
+    .replace(/[0-9]/g,'')
+    .trim();
+}
+function buildPinyinIndex(){
+  CHAR_BASE_PINYIN = {}; PINYIN_TO_CHARS = {};
+  for(const key in ZH_WORDS){
+    const w = ZH_WORDS[key];
+    if(!w || !w.chinese || !w.pinyin) continue;
+    const chars = Array.from(w.chinese);
+    const sylls = w.pinyin.trim().split(/\s+/);
+    if(chars.length !== sylls.length) continue;
+    for(let i=0;i<chars.length;i++){
+      const ch=chars[i], base=toBasePinyin(sylls[i]);
+      if(!base) continue;
+      if(!CHAR_BASE_PINYIN[ch]) CHAR_BASE_PINYIN[ch]=base;
+      if(!PINYIN_TO_CHARS[base]) PINYIN_TO_CHARS[base]=[];
+      if(!PINYIN_TO_CHARS[base].includes(ch)) PINYIN_TO_CHARS[base].push(ch);
+    }
+  }
+}
+function generateImposters(word, n){
+  if(!CHAR_BASE_PINYIN) buildPinyinIndex();
+  const chars = Array.from(word);
+  const results = new Set();
+  const allChars = Object.keys(CHAR_BASE_PINYIN);
+  let attempts = 0;
+  const maxAttempts = 200;
+  while(results.size < n && attempts < maxAttempts){
+    attempts++;
+    const pos = Math.floor(Math.random()*chars.length);
+    const orig = chars[pos];
+    const base = CHAR_BASE_PINYIN[orig];
+    // Prefer same-base-pinyin candidates; if that pool is too small to yield
+    // enough unique imposters, widen to any character so we still hit n.
+    let candidates = base ? (PINYIN_TO_CHARS[base]||[]).filter(c=>c!==orig) : [];
+    if(!candidates.length || attempts > maxAttempts/2){
+      candidates = allChars.filter(c=>c!==orig);
+    }
+    if(!candidates.length) continue;
+    const sub = candidates[Math.floor(Math.random()*candidates.length)];
+    const fakeArr = chars.slice(); fakeArr[pos]=sub;
+    const fake = fakeArr.join('');
+    if(fake !== word) results.add(fake);
+  }
+  return Array.from(results).slice(0,n);
+}
+function buildMCOptions(w){
+  const real = w.chinese;
+  const fakes = generateImposters(real, 3);
+  const all = [{text:real, isCorrect:true}].concat(fakes.map(f=>({text:f, isCorrect:false})));
+  for(let i=all.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [all[i],all[j]]=[all[j],all[i]];
+  }
+  return all;
+}
 
 function startBatchFlash(){
   _batchActive = true;
   _batchFlashIdx = 0;
   _batchRatings = new Array(currentBatch.length).fill(3);
+  _pendingSaveKeys = [];
   renderFlashCard();
+}
+
+function renderMCCard(w){
+  _mcAnswered = false;
+  if(_flashTimer){ clearTimeout(_flashTimer); _flashTimer=null; }
+  const batchNum = Math.floor(sessionIdx/BATCH_SIZE)+1;
+  const totalBatches = Math.ceil(sessionQueue.length/BATCH_SIZE);
+  const speakBtns='<button class="speak-btn" onclick="speakFlash()">🔊</button>'
+    +'<button class="speak-btn" onclick="stopFlash()" style="margin-left:10px">✕</button>';
+  const cardEl=document.getElementById('q-card');
+  const opts = buildMCOptions(w);
+  let optsHtml = '<div class="mc-grid" id="mc-grid">';
+  opts.forEach((o,i)=>{
+    optsHtml += '<button type="button" class="mc-opt" id="mc-opt-'+i+'" onclick="selectMCOption('+i+')">'+esc(o.text)+'</button>';
+  });
+  optsHtml += '</div>';
+  window._mcCurrentOpts = opts;
+  window._mcCurrentWord = w;
+
+  cardEl.innerHTML=
+    '<div class="card-label">Batch '+batchNum+'/'+totalBatches+'  '+speakBtns+'</div>'
+    +'<div class="card-hint" style="margin-top:8px;font-size:17px">💡 '+esc(w.meaning)+'</div>'
+    +(w.example_en?'<div class="card-hint" style="margin-top:4px;font-style:italic;color:var(--text3);font-size:13px">'+esc(w.example_en)+'</div>':'')
+    +optsHtml
+    +'<div id="mc-reveal" style="display:none"></div>';
+
+  document.getElementById('q-show-btn').classList.add('hidden');
+  document.getElementById('q-answer-area').classList.add('hidden');
+  document.getElementById('q-current').textContent = _batchFlashIdx+1;
+  document.getElementById('q-total').textContent = currentBatch.length;
+  document.getElementById('q-progress-fill').style.width=(_batchFlashIdx/currentBatch.length*100)+'%';
+  document.getElementById('q-progress-fill').className='progress-fill fill-zh';
+  const badge=document.getElementById('q-lang-badge');
+  badge.textContent='🇨🇳 Chinese'; badge.className='quiz-lang-badge badge-zh';
+  show('screen-quiz');
+
+  if(window.speechSynthesis){
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(w.chinese);
+    u.lang='zh-CN'; u.rate=1.0;
+    speechSynthesis.speak(u);
+  }
+}
+
+function selectMCOption(idx){
+  if(_mcAnswered) return;
+  _mcAnswered = true;
+  const opts = window._mcCurrentOpts;
+  const w = window._mcCurrentWord;
+  if(!opts || !w) return;
+  const chosen = opts[idx];
+  const correctIdx = opts.findIndex(o=>o.isCorrect);
+  document.querySelectorAll('.mc-opt').forEach(btn=>btn.disabled=true);
+  if(chosen.isCorrect){
+    document.getElementById('mc-opt-'+idx).classList.add('mc-correct');
+  } else {
+    document.getElementById('mc-opt-'+idx).classList.add('mc-wrong');
+    document.getElementById('mc-opt-'+correctIdx).classList.add('mc-correct');
+  }
+  const reveal=document.getElementById('mc-reveal');
+  if(reveal){
+    reveal.innerHTML='<div style="text-align:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-size:20px;font-weight:700;color:var(--accent)">'+esc(w.chinese)+'</div>'
+      +(w.pinyin?'<div style="font-size:14px;color:var(--text2);margin-top:2px">'+esc(w.pinyin)+'</div>':'')+'</div>';
+    reveal.style.display='block';
+  }
+  const r = chosen.isCorrect ? 3 : 1;
+  if(r===1) sessionStats.again++; else sessionStats.good++;
+  const key = w.chinese;
+  if(key && words[key]) applyRating(words[key], r);
+  if(key) _pendingSaveKeys.push(key);
+  _flashTimer=setTimeout(()=>{
+    if(!_batchActive) return;
+    _batchFlashIdx++;
+    renderFlashCard();
+  }, 1400);
+}
+
+async function finishBatchAuto(){
+  const keys = _pendingSaveKeys.slice();
+  _pendingSaveKeys = [];
+  try{ if(keys.length) await saveWords(words,keys); }catch(e){ console.error('[SRS] finishBatchAuto save failed:',e); }
+  try{
+    const rKey='reviewed_'+todayStr()+'_'+currentLang;
+    const cur=parseInt((await sGet(rKey))||'0');
+    await sSet(rKey,String(cur+keys.length));
+  }catch(e){}
+  sessionIdx+=currentBatch.length;
+  if(sessionIdx>=sessionQueue.length){ showSummary(); }
+  else{
+    currentBatch=sessionQueue.slice(sessionIdx,sessionIdx+BATCH_SIZE);
+    startBatchFlash();
+  }
 }
 
 function renderFlashCard(){
   if(!_batchActive) return;
-  if(_batchFlashIdx >= currentBatch.length){ showBatchReview(); return; }
+  if(_batchFlashIdx >= currentBatch.length){
+    if(currentLang==='zh'){ finishBatchAuto(); } else { showBatchReview(); }
+    return;
+  }
   const w = currentBatch[_batchFlashIdx];
   const batchNum = Math.floor(sessionIdx/BATCH_SIZE)+1;
   const totalBatches = Math.ceil(sessionQueue.length/BATCH_SIZE);
@@ -570,6 +740,8 @@ function renderFlashCard(){
   const badge=document.getElementById('q-lang-badge');
   if(currentLang==='zh'){badge.textContent='🇨🇳 Chinese';badge.className='quiz-lang-badge badge-zh';}
   else{badge.textContent='🇲🇾 Malay';badge.className='quiz-lang-badge badge-ms';}
+
+  if(currentLang==='zh'){ renderMCCard(w); return; }
 
   function escRe(s){return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
   const speakBtns='<button class="speak-btn" onclick="speakFlash()">🔊</button>'

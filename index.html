@@ -30,14 +30,23 @@
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     padding: 48px 24px 90px;
-    background:
-      radial-gradient(1000px 600px at 78% -8%, rgba(124,58,237,0.28), transparent 60%),
-      radial-gradient(820px 520px at 8% 12%, rgba(56,80,220,0.22), transparent 60%),
-      radial-gradient(700px 700px at 92% 96%, rgba(245,196,81,0.10), transparent 55%),
-      linear-gradient(180deg, #07060e 0%, #05050b 55%, #04040a 100%);
-    background-attachment: fixed;
+    background: #05050b;
+    position: relative;
   }
-  .wrap { max-width: 940px; margin: 0 auto; position: relative; }
+  /* Character backdrop (drop a file named bg.jpg next to index.html). */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: -2;
+    background: url('bg.jpg') center top / cover no-repeat;
+  }
+  /* Dark + purple scrim so tiles and text stay legible over the art. */
+  body::after {
+    content: ""; position: fixed; inset: 0; z-index: -1;
+    background:
+      radial-gradient(900px 600px at 80% 0%, rgba(124,58,237,0.26), transparent 60%),
+      radial-gradient(760px 520px at 6% 14%, rgba(56,80,220,0.16), transparent 62%),
+      linear-gradient(180deg, rgba(5,5,11,0.60) 0%, rgba(5,5,11,0.80) 55%, rgba(4,4,10,0.93) 100%);
+  }
+  .wrap { max-width: 940px; margin: 0 auto; position: relative; z-index: 1; }
 
   header { margin-bottom: 42px; position: relative; padding-left: 16px; }
   header::before {

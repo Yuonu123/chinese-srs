@@ -672,7 +672,7 @@ function renderMCCard(w){
   cardEl.innerHTML=
     '<div class="card-label">Batch '+batchNum+'/'+totalBatches+'  '+speakBtns+'</div>'
     +'<div class="card-sentence">'+blanked+'</div>'
-    +'<div class="card-hint" style="margin-top:8px;font-size:17px">💡 '+esc(w.meaning)+'</div>'
+    +'<div class="card-hint" style="margin-top:8px;font-size:13px">💡 '+esc(w.meaning)+'</div>'
     +(w.example_en?'<div class="card-hint" style="margin-top:4px;font-style:italic;color:var(--text3);font-size:13px">'+esc(w.example_en)+'</div>':'')
     +optsHtml
     +'<div id="mc-reveal" style="display:none"></div>';
@@ -689,7 +689,7 @@ function renderMCCard(w){
 
   if(window.speechSynthesis){
     speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(w.chinese);
+    const u=new SpeechSynthesisUtterance(w.example_zh||w.chinese);
     u.lang='zh-CN'; u.rate=1.0;
     speechSynthesis.speak(u);
   }
